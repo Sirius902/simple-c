@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            target-os: linux
+            build-target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target-os: windows
+            build-target: x86_64-pc-windows-msvc
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.build-target }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Run Tests
+      run: cargo test
+    - name: Clippy Lints
+      run: cargo clippy
