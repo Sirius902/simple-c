@@ -66,7 +66,7 @@ impl<'a> TokenStream<'a> {
             return Some(Ok(lexeme));
         }
 
-        Some(Err(TokenError))
+        Some(Err(TokenError(self.location)))
     }
 }
 
@@ -119,11 +119,11 @@ pub fn refine_keywords(l: Lexeme) -> Lexeme {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub struct TokenError;
+pub struct TokenError(Location);
 
 impl std::fmt::Display for TokenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TokenError")
+        write!(f, "{}:{} syntax error", self.0.line, self.0.column)
     }
 }
 
@@ -217,7 +217,10 @@ mod tests {
 
     #[test]
     pub fn matches_from_start() {
-        assert_eq!(TokenStream::new("\0<").token(), Some(Err(TokenError)));
+        assert_eq!(
+            TokenStream::new("\0<").token(),
+            Some(Err(TokenError(Location::new(1, 1))))
+        );
     }
 
     #[test]
@@ -243,11 +246,17 @@ mod tests {
 
     #[test]
     pub fn iter_error() {
-        let lexemes = TokenStream::new("\0\0\0\0\0")
+        let lexemes = TokenStream::new("a\0\0\0\0\0")
             .into_iter()
             .collect::<Vec<_>>();
 
-        assert_eq!(lexemes, vec![Err(TokenError)]);
+        assert_eq!(
+            lexemes,
+            vec![
+                Ok(Lexeme(Token::Id, "a", Location::new(1, 1))),
+                Err(TokenError(Location::new(1, 2))),
+            ]
+        );
     }
 
     #[test]
