@@ -256,4 +256,112 @@ mod tests {
     pub fn eof() {
         assert_eq!(TokenStream::new("").token(), None);
     }
+
+    #[test]
+    pub fn location_works() {
+        assert_eq!(
+            TokenStream::new("a;b")
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>(),
+            Ok(vec![
+                Lexeme(Token::Id, "a", Location::new(1, 1)),
+                Lexeme(Token::Semi, ";", Location::new(1, 2)),
+                Lexeme(Token::Id, "b", Location::new(1, 3)),
+            ])
+        );
+
+        assert_eq!(
+            TokenStream::new(" a\nb ")
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>(),
+            Ok(vec![
+                Lexeme(Token::Id, "a", Location::new(1, 2)),
+                Lexeme(Token::Id, "b", Location::new(2, 1)),
+            ])
+        );
+    }
+
+    #[test]
+    pub fn large_program() {
+        let input = "float x = 4.0;\n\
+            x = x + 1;\n\
+            if (x == 5) {\n\
+                for (int i = 0; i < 5; i = i + 1) {}\n\
+            } else {\n\
+                int a = 1 + 3 * x * 2 / 6 - 6.0;\n\
+            }\n\
+            x = x - 1;";
+
+        let lexemes = TokenStream::new(input)
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>();
+
+        assert_eq!(
+            lexemes,
+            Ok(vec![
+                Lexeme(Token::Type, "float", Location::new(1, 1)),
+                Lexeme(Token::Id, "x", Location::new(1, 7)),
+                Lexeme(Token::Assign, "=", Location::new(1, 9)),
+                Lexeme(Token::Num, "4.0", Location::new(1, 11)),
+                Lexeme(Token::Semi, ";", Location::new(1, 14)),
+                Lexeme(Token::Id, "x", Location::new(2, 1)),
+                Lexeme(Token::Assign, "=", Location::new(2, 3)),
+                Lexeme(Token::Id, "x", Location::new(2, 5)),
+                Lexeme(Token::Plus, "+", Location::new(2, 7)),
+                Lexeme(Token::Num, "1", Location::new(2, 9)),
+                Lexeme(Token::Semi, ";", Location::new(2, 10)),
+                Lexeme(Token::If, "if", Location::new(3, 1)),
+                Lexeme(Token::LParen, "(", Location::new(3, 4)),
+                Lexeme(Token::Id, "x", Location::new(3, 5)),
+                Lexeme(Token::Eq, "==", Location::new(3, 7)),
+                Lexeme(Token::Num, "5", Location::new(3, 10)),
+                Lexeme(Token::RParen, ")", Location::new(3, 11)),
+                Lexeme(Token::LBrace, "{", Location::new(3, 13)),
+                Lexeme(Token::For, "for", Location::new(4, 1)),
+                Lexeme(Token::LParen, "(", Location::new(4, 5)),
+                Lexeme(Token::Type, "int", Location::new(4, 6)),
+                Lexeme(Token::Id, "i", Location::new(4, 10)),
+                Lexeme(Token::Assign, "=", Location::new(4, 12)),
+                Lexeme(Token::Num, "0", Location::new(4, 14)),
+                Lexeme(Token::Semi, ";", Location::new(4, 15)),
+                Lexeme(Token::Id, "i", Location::new(4, 17)),
+                Lexeme(Token::Lt, "<", Location::new(4, 19)),
+                Lexeme(Token::Num, "5", Location::new(4, 21)),
+                Lexeme(Token::Semi, ";", Location::new(4, 22)),
+                Lexeme(Token::Id, "i", Location::new(4, 24)),
+                Lexeme(Token::Assign, "=", Location::new(4, 26)),
+                Lexeme(Token::Id, "i", Location::new(4, 28)),
+                Lexeme(Token::Plus, "+", Location::new(4, 30)),
+                Lexeme(Token::Num, "1", Location::new(4, 32)),
+                Lexeme(Token::RParen, ")", Location::new(4, 33)),
+                Lexeme(Token::LBrace, "{", Location::new(4, 35)),
+                Lexeme(Token::RBrace, "}", Location::new(4, 36)),
+                Lexeme(Token::RBrace, "}", Location::new(5, 1)),
+                Lexeme(Token::Else, "else", Location::new(5, 3)),
+                Lexeme(Token::LBrace, "{", Location::new(5, 8)),
+                Lexeme(Token::Type, "int", Location::new(6, 1)),
+                Lexeme(Token::Id, "a", Location::new(6, 5)),
+                Lexeme(Token::Assign, "=", Location::new(6, 7)),
+                Lexeme(Token::Num, "1", Location::new(6, 9)),
+                Lexeme(Token::Plus, "+", Location::new(6, 11)),
+                Lexeme(Token::Num, "3", Location::new(6, 13)),
+                Lexeme(Token::Mult, "*", Location::new(6, 15)),
+                Lexeme(Token::Id, "x", Location::new(6, 17)),
+                Lexeme(Token::Mult, "*", Location::new(6, 19)),
+                Lexeme(Token::Num, "2", Location::new(6, 21)),
+                Lexeme(Token::Div, "/", Location::new(6, 23)),
+                Lexeme(Token::Num, "6", Location::new(6, 25)),
+                Lexeme(Token::Sub, "-", Location::new(6, 27)),
+                Lexeme(Token::Num, "6.0", Location::new(6, 29)),
+                Lexeme(Token::Semi, ";", Location::new(6, 32)),
+                Lexeme(Token::RBrace, "}", Location::new(7, 1)),
+                Lexeme(Token::Id, "x", Location::new(8, 1)),
+                Lexeme(Token::Assign, "=", Location::new(8, 3)),
+                Lexeme(Token::Id, "x", Location::new(8, 5)),
+                Lexeme(Token::Sub, "-", Location::new(8, 7)),
+                Lexeme(Token::Num, "1", Location::new(8, 9)),
+                Lexeme(Token::Semi, ";", Location::new(8, 10)),
+            ])
+        );
+    }
 }
