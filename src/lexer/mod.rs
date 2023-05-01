@@ -57,7 +57,7 @@ impl<'a> TokenStream<'a> {
             if let Lexeme(Token::Ignore, value, _) = &lexeme {
                 match *value {
                     "\r\n" | "\r" | "\n" => self.location.next_line(),
-                    _ => self.location.column += 1,
+                    _ => self.location.column += capture.len(),
                 }
                 continue;
             }
