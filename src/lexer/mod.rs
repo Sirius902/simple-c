@@ -55,11 +55,9 @@ impl<'a> TokenStream<'a> {
             self.index += capture.len();
 
             if let Lexeme(Token::Ignore, value, _) = &lexeme {
-                for c in value.chars() {
-                    match c {
-                        '\r' | '\n' => self.location.next_line(),
-                        _ => self.location.column += 1,
-                    }
+                match *value {
+                    "\r\n" | "\r" | "\n" => self.location.next_line(),
+                    _ => self.location.column += 1,
                 }
                 continue;
             }
@@ -202,7 +200,7 @@ pub const TOKENS: &[(Token, &str, TokenAction)] = &[
     (Token::RParen, r"\)", identity),
     (Token::LBrace, r"\{", identity),
     (Token::RBrace, r"\}", identity),
-    (Token::Ignore, r"[ \t\r\n]", identity),
+    (Token::Ignore, r"\r\n|[ \t\r\n]", identity),
 ];
 
 #[cfg(test)]
@@ -255,6 +253,13 @@ mod tests {
     #[test]
     pub fn eof() {
         assert_eq!(TokenStream::new("").token(), None);
+        assert_eq!(
+            {
+                let mut s = TokenStream::new("a");
+                (s.token(), s.token())
+            },
+            (Some(Ok(Lexeme(Token::Id, "a", Location::new(1, 1)))), None)
+        );
     }
 
     #[test]
@@ -271,12 +276,16 @@ mod tests {
         );
 
         assert_eq!(
-            TokenStream::new(" a\nb ")
+            TokenStream::new(" a\nb c\rd\r\ne\r\n\r\nf ")
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>(),
             Ok(vec![
                 Lexeme(Token::Id, "a", Location::new(1, 2)),
                 Lexeme(Token::Id, "b", Location::new(2, 1)),
+                Lexeme(Token::Id, "c", Location::new(2, 3)),
+                Lexeme(Token::Id, "d", Location::new(3, 1)),
+                Lexeme(Token::Id, "e", Location::new(4, 1)),
+                Lexeme(Token::Id, "f", Location::new(6, 1)),
             ])
         );
     }
