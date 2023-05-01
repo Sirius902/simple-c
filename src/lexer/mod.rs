@@ -16,7 +16,7 @@ impl<'a> TokenStream<'a> {
                     if !acc.is_empty() {
                         acc.push('|');
                     }
-                    acc.push_str(&format!("(?P<t{}>{})", token as usize, pattern));
+                    acc.push_str(&format!("^(?P<t{}>{})", token as usize, pattern));
                     acc
                 }),
         )
@@ -37,7 +37,7 @@ impl<'a> TokenStream<'a> {
             }
 
             let Some((i, capture)) = self.re
-                .captures_at(self.input, self.index)
+                .captures(&self.input[self.index..])
                 .and_then(|captures| {
                     captures
                         .iter()
