@@ -1,10 +1,13 @@
 use regex::{Regex, RegexBuilder};
 
-pub mod context;
+use self::error::ErrorIterator;
+
+mod error;
 
 pub struct TokenStream<'a> {
     input: &'a str,
     index: usize,
+    current_line_index: usize,
     re: Regex,
     location: Location,
     reached_eof: bool,
@@ -29,13 +32,14 @@ impl<'a> TokenStream<'a> {
         Self {
             input,
             index: 0,
+            current_line_index: 0,
             re,
             location: Location::default(),
             reached_eof: false,
         }
     }
 
-    pub fn token(&mut self) -> Option<Lexeme<'a>> {
+    fn next(&mut self) -> Option<Lexeme<'a>> {
         loop {
             if self.index == self.input.len() {
                 return if self.reached_eof {
@@ -66,7 +70,10 @@ impl<'a> TokenStream<'a> {
 
             if let Lexeme(Token::Ignore, value, _) = &lexeme {
                 match *value {
-                    "\r\n" | "\r" | "\n" => self.location.next_line(),
+                    "\r\n" | "\r" | "\n" => {
+                        self.location.next_line();
+                        self.current_line_index = self.index;
+                    }
                     _ => self.location.column += capture.len(),
                 }
                 continue;
@@ -80,24 +87,17 @@ impl<'a> TokenStream<'a> {
             return Some(lexeme);
         }
     }
-}
 
-pub struct TokenIterator<'a>(TokenStream<'a>);
-
-impl<'a> Iterator for TokenIterator<'a> {
-    type Item = Lexeme<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.token()
+    pub fn into_err_iter(self) -> ErrorIterator<'a> {
+        ErrorIterator { stream: Some(self) }
     }
 }
 
-impl<'a> IntoIterator for TokenStream<'a> {
+impl<'a> Iterator for TokenStream<'a> {
     type Item = Lexeme<'a>;
-    type IntoIter = TokenIterator<'a>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        TokenIterator(self)
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next()
     }
 }
 
@@ -130,7 +130,7 @@ impl std::fmt::Display for TokenError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lexeme<'a>(Token, &'a str, Location);
 
-impl<'a> Lexeme<'a> {
+impl Lexeme<'_> {
     pub fn map_token(mut self, f: impl Fn(Token) -> Token) -> Self {
         self.0 = f(self.0);
         self
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     pub fn is_longest_match() {
         assert_eq!(
-            TokenStream::new("==").token(),
+            TokenStream::new("==").next(),
             Some(Lexeme(Token::Eq, "==", Location::new(1, 1)))
         );
     }
@@ -277,14 +277,14 @@ mod tests {
         assert_eq!(
             {
                 let mut s = TokenStream::new("");
-                (s.token(), s.token())
+                (s.next(), s.next())
             },
             (Some(Lexeme(Token::Eof, "", Location::new(1, 1))), None)
         );
         assert_eq!(
             {
                 let mut s = TokenStream::new("a");
-                (s.token(), s.token(), s.token())
+                (s.next(), s.next(), s.next())
             },
             (
                 Some(Lexeme(Token::Id, "a", Location::new(1, 1))),
