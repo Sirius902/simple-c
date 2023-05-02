@@ -5,6 +5,7 @@ pub struct TokenStream<'a> {
     index: usize,
     re: Regex,
     location: Location,
+    reached_eof: bool,
 }
 
 impl<'a> TokenStream<'a> {
@@ -27,13 +28,19 @@ impl<'a> TokenStream<'a> {
             index: 0,
             re,
             location: Location::default(),
+            reached_eof: false,
         }
     }
 
     pub fn token(&mut self) -> Option<Result<Lexeme<'a>, TokenError>> {
         loop {
             if self.index == self.input.len() {
-                return None;
+                return if self.reached_eof {
+                    None
+                } else {
+                    self.reached_eof = true;
+                    Some(Ok(Lexeme(Token::Eof, "", self.location)))
+                };
             }
 
             let Some((i, capture)) = self.re
@@ -72,18 +79,18 @@ impl<'a> TokenStream<'a> {
 
 pub struct TokenIterator<'a> {
     stream: TokenStream<'a>,
-    errored: bool,
+    finished: bool,
 }
 
 impl<'a> Iterator for TokenIterator<'a> {
     type Item = Result<Lexeme<'a>, TokenError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.errored {
+        if self.finished {
             None
         } else {
             let lexeme = self.stream.token();
-            self.errored = matches!(lexeme, Some(Err(_)));
+            self.finished = matches!(lexeme, Some(Ok(Lexeme(Token::Eof, _, _))) | Some(Err(_)));
             lexeme
         }
     }
@@ -96,7 +103,7 @@ impl<'a> IntoIterator for TokenStream<'a> {
     fn into_iter(self) -> Self::IntoIter {
         TokenIterator {
             stream: self,
-            errored: false,
+            finished: false,
         }
     }
 }
@@ -181,6 +188,7 @@ pub enum Token {
     If,
     Else,
     For,
+    Eof,
 }
 
 pub type TokenAction = fn(Lexeme) -> Lexeme;
@@ -240,6 +248,7 @@ mod tests {
                 Lexeme(Token::LParen, "(", Location::new(1, 21)),
                 Lexeme(Token::Num, "6", Location::new(1, 22)),
                 Lexeme(Token::RBrace, "}", Location::new(1, 23)),
+                Lexeme(Token::Eof, "", Location::new(1, 24)),
             ])
         );
     }
@@ -261,13 +270,23 @@ mod tests {
 
     #[test]
     pub fn eof() {
-        assert_eq!(TokenStream::new("").token(), None);
+        assert_eq!(
+            {
+                let mut s = TokenStream::new("");
+                (s.token(), s.token())
+            },
+            (Some(Ok(Lexeme(Token::Eof, "", Location::new(1, 1)))), None)
+        );
         assert_eq!(
             {
                 let mut s = TokenStream::new("a");
-                (s.token(), s.token())
+                (s.token(), s.token(), s.token())
             },
-            (Some(Ok(Lexeme(Token::Id, "a", Location::new(1, 1)))), None)
+            (
+                Some(Ok(Lexeme(Token::Id, "a", Location::new(1, 1)))),
+                Some(Ok(Lexeme(Token::Eof, "", Location::new(1, 2)))),
+                None
+            )
         );
     }
 
@@ -281,6 +300,7 @@ mod tests {
                 Lexeme(Token::Id, "a", Location::new(1, 1)),
                 Lexeme(Token::Semi, ";", Location::new(1, 2)),
                 Lexeme(Token::Id, "b", Location::new(1, 3)),
+                Lexeme(Token::Eof, "", Location::new(1, 4)),
             ])
         );
 
@@ -295,6 +315,7 @@ mod tests {
                 Lexeme(Token::Id, "d", Location::new(3, 1)),
                 Lexeme(Token::Id, "e", Location::new(4, 1)),
                 Lexeme(Token::Id, "f", Location::new(6, 1)),
+                Lexeme(Token::Eof, "", Location::new(6, 3)),
             ])
         );
     }
@@ -379,6 +400,7 @@ mod tests {
                 Lexeme(Token::Sub, "-", Location::new(8, 7)),
                 Lexeme(Token::Num, "1", Location::new(8, 9)),
                 Lexeme(Token::Semi, ";", Location::new(8, 10)),
+                Lexeme(Token::Eof, "", Location::new(8, 11)),
             ])
         );
     }
