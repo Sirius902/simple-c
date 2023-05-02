@@ -1,3 +1,5 @@
+use unicode_width::UnicodeWidthChar;
+
 use super::{Lexeme, Location, Token, TokenStream};
 
 pub struct ErrorIterator<'a> {
@@ -83,19 +85,24 @@ impl std::fmt::Display for Error<'_> {
             write!(f, " ")?;
         }
 
-        for i in line.char_indices().map(|(i, c)| i + c.len_utf8()) {
-            let c = if i == self.err_start {
-                "^"
+        for (i, width) in line
+            .char_indices()
+            .map(|(i, c)| (i + c.len_utf8(), UnicodeWidthChar::width(c)))
+        {
+            let (c, width) = if i == self.err_start {
+                ("^", width.unwrap_or(1))
             } else if i >= self.err_start {
                 if i >= self.err_end {
                     break;
                 }
-                "~"
+                ("~", width.unwrap_or(1))
             } else {
-                " "
+                (" ", 1)
             };
 
-            write!(f, "{}", c)?;
+            for _ in 0..width {
+                write!(f, "{}", c)?;
+            }
         }
 
         Ok(())
