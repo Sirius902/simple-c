@@ -1,4 +1,4 @@
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 
 pub struct TokenStream<'a> {
     input: &'a str,
@@ -10,17 +10,18 @@ pub struct TokenStream<'a> {
 
 impl<'a> TokenStream<'a> {
     pub fn new(input: &'a str) -> Self {
-        let re = Regex::new(
-            &TOKENS
-                .iter()
-                .fold(String::new(), |mut acc, &(token, pattern, _)| {
-                    if !acc.is_empty() {
-                        acc.push('|');
-                    }
-                    acc.push_str(&format!("^(?P<t{}>{})", token as usize, pattern));
-                    acc
-                }),
-        )
+        let re = RegexBuilder::new(&TOKENS.iter().fold(
+            String::new(),
+            |mut acc, &(token, pattern, _)| {
+                if !acc.is_empty() {
+                    acc.push('|');
+                }
+                acc.push_str(&format!("^(?P<t{}>{})", token as usize, pattern));
+                acc
+            },
+        ))
+        .dot_matches_new_line(true)
+        .build()
         .unwrap();
 
         Self {
@@ -32,14 +33,14 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn token(&mut self) -> Option<Result<Lexeme<'a>, TokenError>> {
+    pub fn token(&mut self) -> Option<Lexeme<'a>> {
         loop {
             if self.index == self.input.len() {
                 return if self.reached_eof {
                     None
                 } else {
                     self.reached_eof = true;
-                    Some(Ok(Lexeme(Token::Eof, "", self.location)))
+                    Some(Lexeme(Token::Eof, "", self.location))
                 };
             }
 
@@ -52,7 +53,7 @@ impl<'a> TokenStream<'a> {
                         .enumerate()
                         .find(|&(_, capture)| capture.is_some())
                         .and_then(|(i, capture)| capture.map(|c| (i, c)))
-                }) else { break; };
+                }) else { unreachable!() };
 
             let lexeme = {
                 let (token, _, token_action) = &TOKENS[i];
@@ -69,42 +70,32 @@ impl<'a> TokenStream<'a> {
                 continue;
             }
 
-            self.location.column += capture.len();
-            return Some(Ok(lexeme));
-        }
+            self.location.column += match lexeme.0 {
+                Token::Unknown => 1,
+                _ => capture.len(),
+            };
 
-        Some(Err(TokenError(self.location)))
+            return Some(lexeme);
+        }
     }
 }
 
-pub struct TokenIterator<'a> {
-    stream: TokenStream<'a>,
-    finished: bool,
-}
+pub struct TokenIterator<'a>(TokenStream<'a>);
 
 impl<'a> Iterator for TokenIterator<'a> {
-    type Item = Result<Lexeme<'a>, TokenError>;
+    type Item = Lexeme<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            None
-        } else {
-            let lexeme = self.stream.token();
-            self.finished = matches!(lexeme, Some(Ok(Lexeme(Token::Eof, _, _))) | Some(Err(_)));
-            lexeme
-        }
+        self.0.token()
     }
 }
 
 impl<'a> IntoIterator for TokenStream<'a> {
-    type Item = Result<Lexeme<'a>, TokenError>;
+    type Item = Lexeme<'a>;
     type IntoIter = TokenIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        TokenIterator {
-            stream: self,
-            finished: false,
-        }
+        TokenIterator(self)
     }
 }
 
@@ -189,6 +180,7 @@ pub enum Token {
     Else,
     For,
     Eof,
+    Unknown,
 }
 
 pub type TokenAction = fn(Lexeme) -> Lexeme;
@@ -209,6 +201,7 @@ pub const TOKENS: &[(Token, &str, TokenAction)] = &[
     (Token::LBrace, r"\{", identity),
     (Token::RBrace, r"\}", identity),
     (Token::Ignore, r"\r\n|[ \t\r\n]", identity),
+    (Token::Unknown, r".", identity),
 ];
 
 #[cfg(test)]
@@ -219,15 +212,19 @@ mod tests {
     pub fn is_longest_match() {
         assert_eq!(
             TokenStream::new("==").token(),
-            Some(Ok(Lexeme(Token::Eq, "==", Location::new(1, 1))))
+            Some(Lexeme(Token::Eq, "==", Location::new(1, 1)))
         );
     }
 
     #[test]
     pub fn matches_from_start() {
         assert_eq!(
-            TokenStream::new("\0<").token(),
-            Some(Err(TokenError(Location::new(1, 1))))
+            TokenStream::new("\0<").into_iter().collect::<Vec<_>>(),
+            vec![
+                Lexeme(Token::Unknown, "\0", Location::new(1, 1)),
+                Lexeme(Token::Lt, "<", Location::new(1, 2)),
+                Lexeme(Token::Eof, "", Location::new(1, 3)),
+            ]
         );
     }
 
@@ -235,11 +232,11 @@ mod tests {
     pub fn iter_success() {
         let lexemes = TokenStream::new("49r14.63 chicken if (6}")
             .into_iter()
-            .collect::<Result<Vec<_>, _>>();
+            .collect::<Vec<_>>();
 
         assert_eq!(
             lexemes,
-            Ok(vec![
+            vec![
                 Lexeme(Token::Num, "49", Location::new(1, 1)),
                 Lexeme(Token::Id, "r14", Location::new(1, 3)),
                 Lexeme(Token::Num, ".63", Location::new(1, 6)),
@@ -249,21 +246,26 @@ mod tests {
                 Lexeme(Token::Num, "6", Location::new(1, 22)),
                 Lexeme(Token::RBrace, "}", Location::new(1, 23)),
                 Lexeme(Token::Eof, "", Location::new(1, 24)),
-            ])
+            ]
         );
     }
 
     #[test]
     pub fn iter_error() {
-        let lexemes = TokenStream::new("a\0\0\0\0\0")
+        let lexemes = TokenStream::new("a\0→\0\0\0")
             .into_iter()
             .collect::<Vec<_>>();
 
         assert_eq!(
             lexemes,
             vec![
-                Ok(Lexeme(Token::Id, "a", Location::new(1, 1))),
-                Err(TokenError(Location::new(1, 2))),
+                Lexeme(Token::Id, "a", Location::new(1, 1)),
+                Lexeme(Token::Unknown, "\0", Location::new(1, 2)),
+                Lexeme(Token::Unknown, "→", Location::new(1, 3)),
+                Lexeme(Token::Unknown, "\0", Location::new(1, 4)),
+                Lexeme(Token::Unknown, "\0", Location::new(1, 5)),
+                Lexeme(Token::Unknown, "\0", Location::new(1, 6)),
+                Lexeme(Token::Eof, "", Location::new(1, 7)),
             ]
         );
     }
@@ -275,7 +277,7 @@ mod tests {
                 let mut s = TokenStream::new("");
                 (s.token(), s.token())
             },
-            (Some(Ok(Lexeme(Token::Eof, "", Location::new(1, 1)))), None)
+            (Some(Lexeme(Token::Eof, "", Location::new(1, 1))), None)
         );
         assert_eq!(
             {
@@ -283,8 +285,8 @@ mod tests {
                 (s.token(), s.token(), s.token())
             },
             (
-                Some(Ok(Lexeme(Token::Id, "a", Location::new(1, 1)))),
-                Some(Ok(Lexeme(Token::Eof, "", Location::new(1, 2)))),
+                Some(Lexeme(Token::Id, "a", Location::new(1, 1))),
+                Some(Lexeme(Token::Eof, "", Location::new(1, 2))),
                 None
             )
         );
@@ -293,22 +295,20 @@ mod tests {
     #[test]
     pub fn location_works() {
         assert_eq!(
-            TokenStream::new("a;b")
-                .into_iter()
-                .collect::<Result<Vec<_>, _>>(),
-            Ok(vec![
+            TokenStream::new("a;b").into_iter().collect::<Vec<_>>(),
+            vec![
                 Lexeme(Token::Id, "a", Location::new(1, 1)),
                 Lexeme(Token::Semi, ";", Location::new(1, 2)),
                 Lexeme(Token::Id, "b", Location::new(1, 3)),
                 Lexeme(Token::Eof, "", Location::new(1, 4)),
-            ])
+            ]
         );
 
         assert_eq!(
             TokenStream::new(" a\nb c\rd\r\ne\r\n\r\nf ")
                 .into_iter()
-                .collect::<Result<Vec<_>, _>>(),
-            Ok(vec![
+                .collect::<Vec<_>>(),
+            vec![
                 Lexeme(Token::Id, "a", Location::new(1, 2)),
                 Lexeme(Token::Id, "b", Location::new(2, 1)),
                 Lexeme(Token::Id, "c", Location::new(2, 3)),
@@ -316,7 +316,7 @@ mod tests {
                 Lexeme(Token::Id, "e", Location::new(4, 1)),
                 Lexeme(Token::Id, "f", Location::new(6, 1)),
                 Lexeme(Token::Eof, "", Location::new(6, 3)),
-            ])
+            ]
         );
     }
 
@@ -331,13 +331,11 @@ mod tests {
             }\n\
             x = x - 1;";
 
-        let lexemes = TokenStream::new(input)
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>();
+        let lexemes = TokenStream::new(input).into_iter().collect::<Vec<_>>();
 
         assert_eq!(
             lexemes,
-            Ok(vec![
+            vec![
                 Lexeme(Token::Type, "float", Location::new(1, 1)),
                 Lexeme(Token::Id, "x", Location::new(1, 7)),
                 Lexeme(Token::Assign, "=", Location::new(1, 9)),
@@ -401,7 +399,7 @@ mod tests {
                 Lexeme(Token::Num, "1", Location::new(8, 9)),
                 Lexeme(Token::Semi, ";", Location::new(8, 10)),
                 Lexeme(Token::Eof, "", Location::new(8, 11)),
-            ])
+            ]
         );
     }
 }
