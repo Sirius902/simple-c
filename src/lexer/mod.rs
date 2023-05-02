@@ -1,5 +1,7 @@
 use regex::{Regex, RegexBuilder};
 
+pub mod context;
+
 pub struct TokenStream<'a> {
     input: &'a str,
     index: usize,
