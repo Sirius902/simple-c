@@ -54,24 +54,29 @@ impl std::fmt::Display for Error<'_> {
             .chars()
             .take_while(|&c| c != '\r' && c != '\n')
             .map(|c| c.len_utf8())
-            .sum::<usize>();
+            .sum();
 
         let line = &self.line_to_eof[..line_end];
 
-        let context_before = "line: ";
-        let context_after = ": ";
-        let line_num_size = if self.location.line == 0 {
-            1
-        } else {
-            self.location.line.ilog10() + 1
+        const CONTEXT_PARTS: &[&str] = &["", ":", ": "];
+
+        let location_len = {
+            let num_digits = |n: usize| if n == 0 { 1 } else { n.ilog10() as usize + 1 };
+            num_digits(self.location.line) + num_digits(self.location.column)
         };
-        let context_len = context_before.len() + line_num_size as usize + context_after.len();
+
+        let context_len = CONTEXT_PARTS.iter().map(|s| s.len()).sum::<usize>() + location_len;
 
         writeln!(f, "error: syntax")?;
         writeln!(
             f,
-            "{}{}{}{}",
-            context_before, self.location.line, context_after, line
+            "{}{}{}{}{}{}",
+            CONTEXT_PARTS[0],
+            self.location.line,
+            CONTEXT_PARTS[1],
+            self.location.column,
+            CONTEXT_PARTS[2],
+            line,
         )?;
 
         for _ in 0..context_len {
@@ -93,12 +98,6 @@ impl std::fmt::Display for Error<'_> {
             write!(f, "{}", c)?;
         }
 
-        writeln!(f)?;
-
-        for _ in 0..context_len - 1 + self.err_start {
-            write!(f, " ")?;
-        }
-
-        writeln!(f, "{}", self.location.column)
+        Ok(())
     }
 }
