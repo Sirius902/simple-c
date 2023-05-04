@@ -1,45 +1,46 @@
+use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
 
-use self::error::ErrorIterator;
-
 mod error;
+
+static TOKEN_REGEX: Lazy<Regex> = Lazy::new(|| {
+    RegexBuilder::new(
+        &TOKENS
+            .iter()
+            .fold(String::new(), |mut acc, &(token, pattern, _)| {
+                if !acc.is_empty() {
+                    acc.push('|');
+                }
+                acc.push_str(&format!("^(?P<t{}>{})", token as usize, pattern));
+                acc
+            }),
+    )
+    .dot_matches_new_line(true)
+    .build()
+    .unwrap()
+});
 
 pub struct TokenStream<'a> {
     input: &'a str,
     index: usize,
     current_line_index: usize,
-    re: Regex,
     location: Location,
     reached_eof: bool,
 }
 
 impl<'a> TokenStream<'a> {
     pub fn new(input: &'a str) -> Self {
-        let re = RegexBuilder::new(&TOKENS.iter().fold(
-            String::new(),
-            |mut acc, &(token, pattern, _)| {
-                if !acc.is_empty() {
-                    acc.push('|');
-                }
-                acc.push_str(&format!("^(?P<t{}>{})", token as usize, pattern));
-                acc
-            },
-        ))
-        .dot_matches_new_line(true)
-        .build()
-        .unwrap();
-
         Self {
             input,
             index: 0,
             current_line_index: 0,
-            re,
             location: Location::default(),
             reached_eof: false,
         }
     }
 
     fn next(&mut self) -> Option<Lexeme<'a>> {
+        let token_regex = &*TOKEN_REGEX;
         loop {
             if self.index == self.input.len() {
                 return if self.reached_eof {
@@ -50,7 +51,7 @@ impl<'a> TokenStream<'a> {
                 };
             }
 
-            let Some((i, capture)) = self.re
+            let Some((i, capture)) = token_regex
                 .captures(&self.input[self.index..])
                 .and_then(|captures| {
                     captures
@@ -88,8 +89,8 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn into_err_iter(self) -> ErrorIterator<'a> {
-        ErrorIterator { stream: Some(self) }
+    pub const fn into_err_iter(self) -> error::Iterator<'a> {
+        error::Iterator { stream: Some(self) }
     }
 }
 
@@ -101,7 +102,7 @@ impl<'a> Iterator for TokenStream<'a> {
     }
 }
 
-pub fn identity(l: Lexeme) -> Lexeme {
+pub const fn identity(l: Lexeme) -> Lexeme {
     l
 }
 
@@ -144,7 +145,7 @@ pub struct Location {
 }
 
 impl Location {
-    pub fn new(line: usize, column: usize) -> Self {
+    pub const fn new(line: usize, column: usize) -> Self {
         Self { line, column }
     }
 

@@ -2,11 +2,11 @@ use unicode_width::UnicodeWidthChar;
 
 use super::{Lexeme, Location, Token, TokenStream};
 
-pub struct ErrorIterator<'a> {
+pub struct Iterator<'a> {
     pub(crate) stream: Option<TokenStream<'a>>,
 }
 
-impl<'a> Iterator for ErrorIterator<'a> {
+impl<'a> std::iter::Iterator for Iterator<'a> {
     type Item = Result<Lexeme<'a>, Error<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -51,16 +51,16 @@ pub struct Error<'a> {
 
 impl std::fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const CONTEXT_PARTS: &[&str] = &["", ":", ": "];
+
         let line_end = self
             .line_to_eof
             .chars()
             .take_while(|&c| c != '\r' && c != '\n')
-            .map(|c| c.len_utf8())
+            .map(char::len_utf8)
             .sum();
 
         let line = &self.line_to_eof[..line_end];
-
-        const CONTEXT_PARTS: &[&str] = &["", ":", ": "];
 
         let location_len = {
             let num_digits = |n: usize| if n == 0 { 1 } else { n.ilog10() as usize + 1 };
