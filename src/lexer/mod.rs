@@ -129,7 +129,7 @@ impl std::fmt::Display for TokenError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Lexeme<'a>(Token, &'a str, Location);
+pub struct Lexeme<'a>(pub Token, pub &'a str, pub Location);
 
 impl Lexeme<'_> {
     pub fn map_token(mut self, f: impl Fn(Token) -> Token) -> Self {
