@@ -1,5 +1,7 @@
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 mod error;
 
@@ -119,15 +121,7 @@ pub fn refine_keywords(l: Lexeme) -> Lexeme {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub struct TokenError(Location);
-
-impl std::fmt::Display for TokenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{} syntax error", self.0.line, self.0.column)
-    }
-}
-
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lexeme<'a>(pub Token, pub &'a str, pub Location);
 
@@ -138,6 +132,7 @@ impl Lexeme<'_> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Location {
     line: usize,
@@ -161,6 +156,7 @@ impl Default for Location {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token {
     Id,
