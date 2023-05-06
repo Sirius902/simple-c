@@ -4,33 +4,60 @@ use super::{Lexeme, Location, Token, TokenStream};
 
 pub struct Iterator<'a> {
     pub(crate) stream: Option<TokenStream<'a>>,
+    leftover_lexeme: Option<Lexeme<'a>>,
+}
+
+impl<'a> Iterator<'a> {
+    pub const fn new(stream: TokenStream<'a>) -> Self {
+        Self {
+            stream: Some(stream),
+            leftover_lexeme: None,
+        }
+    }
 }
 
 impl<'a> std::iter::Iterator for Iterator<'a> {
     type Item = Result<Lexeme<'a>, Error<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(lexeme) = self.leftover_lexeme.take() {
+            if lexeme.0 == Token::Eof {
+                self.stream = None;
+            }
+            return Some(Ok(lexeme));
+        }
+
         let Some(stream) = self.stream.as_mut() else { return None; };
         let lexeme = stream.next();
 
         if let Some(Lexeme(Token::Unknown, value, location)) = lexeme {
+            let stream_input = stream.input;
             let err_start = stream.index + 1 - value.len();
             let line_start = stream.current_line_index;
             let mut err_end = err_start + value.len();
 
-            while let Some(Lexeme(Token::Unknown, value, ahead_loc)) = stream.next() {
-                if ahead_loc.line <= location.line {
-                    err_end += value.len();
-                } else {
-                    break;
+            loop {
+                let next = stream.next();
+                match next {
+                    Some(Lexeme(Token::Unknown, value, ahead_loc)) => {
+                        if ahead_loc.line <= location.line {
+                            err_end += value.len();
+                            continue;
+                        }
+                        break;
+                    }
+                    Some(Lexeme(Token::Eof, _, _)) => {
+                        self.stream = None;
+                    }
+                    _ => (),
                 }
+
+                self.leftover_lexeme = next;
+                break;
             }
 
-            let input = stream.input;
-            self.stream = None;
-
             return Some(Err(Error {
-                line_to_eof: &input[line_start..],
+                line_to_eof: &stream_input[line_start..],
                 err_start: err_start - line_start,
                 err_end: err_end - line_start,
                 location,

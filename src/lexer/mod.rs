@@ -90,7 +90,7 @@ impl<'a> TokenStream<'a> {
     }
 
     pub const fn into_err_iter(self) -> error::Iterator<'a> {
-        error::Iterator { stream: Some(self) }
+        error::Iterator::new(self)
     }
 }
 
