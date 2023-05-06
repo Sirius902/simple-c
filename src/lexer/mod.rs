@@ -135,8 +135,8 @@ impl Lexeme<'_> {
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Location {
-    line: usize,
-    column: usize,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl Location {
